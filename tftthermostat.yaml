@@ -1,0 +1,824 @@
+substitutions:
+  hostname: tftthermostat
+  friendly_name: Termosztát
+
+esphome:
+  name: $hostname
+  friendly_name: $friendly_name
+
+esp32:
+  board: esp32-s3-devkitc-1
+  framework:
+    type: arduino
+
+# Enable logging
+logger:
+  logs:
+    component: ERROR
+
+# Enable Home Assistant API
+api:
+  encryption:
+    key: "ykpnoCHmA7QyN9VVxkwlwy7U3A/E2UhpAnTSOGe1Uqw="
+  reboot_timeout: 5min
+
+ota:
+  - platform: esphome
+    password: "8ad1a55e1574ce788f138da933b27419"
+
+wifi:
+  output_power: 12dB
+  networks:
+  - ssid: !secret wifi_virus_ssid
+    password: !secret wifi_virus_pw
+  - ssid: !secret wifi_dombai_ssid
+    password: !secret wifi_dombai_pw
+
+  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  ap:
+    ssid: "Tftthermostat Fallback Hotspot"
+    password: "nfq2FWn4DsjU"
+
+captive_portal:
+
+# =================================================================================================
+# --- Global variables ----------------------------------------------------------------------------
+globals:
+# --- source id. of the reference temperature -----------------------------------------------------
+  - id: idGlbRefTmpSrc
+    type: int
+    restore_value: yes
+    initial_value: '0'
+# --- plausibility error flag of remote temperature Room1, start with 'failure' (1) ---------------
+  - id: idGlbNappaliPlauErr
+    type: int
+    restore_value: no
+    initial_value: '1'
+# --- plausibility error flag of remote temperature Room2, start with 'failure' (1) ---------------
+  - id: idGlbAronSzobaPlauErr
+    type: int
+    restore_value: no
+    initial_value: '1'
+# --- display page id -----------------------------------------------------------------------------
+  - id: idGlbDsplyPage
+    type: int
+    restore_value: no
+    initial_value: '0'
+# --- time counter --------------------------------------------------------------------------------
+  - id: idGlbTCntr
+    type: int
+    restore_value: no
+    initial_value: '0'
+# --- variable for LCD brihtness  -----------------------------------------------------------------
+  - id: idGlbLcdBrightness
+    type: float
+    restore_value: no
+    initial_value: '1'
+
+# =================================================================================================
+# --- Interval ------------------------------------------------------------------------------------
+interval:
+# --- 1 sec period, used for thermostat/picture slideshow scheduling ------------------------------
+  - interval: 1s
+    then:
+      - lambda: |-
+          id(idGlbTCntr)++;
+          if (10U == id(idGlbTCntr)) {
+            if (0U == id(idGlbDsplyPage)) {
+                id(idGlbDsplyPage) = 1U;
+                idDisplay->show_page(idPagePict1);
+            }
+          } else  if (13U == id(idGlbTCntr)) {
+            if (1U == id(idGlbDsplyPage)) {
+                id(idGlbDsplyPage) = 2U;
+                idDisplay->show_page(idPagePict2);
+            }
+          } else  if (16U == id(idGlbTCntr)) {
+            if (2U == id(idGlbDsplyPage)) {
+                id(idGlbDsplyPage) = 0U;
+                idDisplay->show_page(idPageMain);
+            }
+            id(idGlbTCntr) = 0U;
+          }
+# --- 60 sec period, used for time dependent LCD light set ----------------------------------------
+  - interval: 60s
+    then:
+      - lambda: |-
+          auto time = id(idTime).now();
+          if ( time.is_valid()) {
+            auto HplusM = 100 * time.hour + time.minute;
+            if  ((HplusM > 600) && (HplusM < 2100)) {
+              id(idGlbLcdBrightness) = 0.8f; /* day */
+            } else {
+              id(idGlbLcdBrightness) = 0.4f; /* night */
+            }
+            id(idLightBacklight).turn_on().set_brightness(id(idGlbLcdBrightness)).perform();
+          }
+
+# =================================================================================================
+# --- Images --------------------------------------------------------------------------------------
+image:
+# --- Image1 comes from secret.yaml ---------------------------------------------------------------
+#  - file: "images/image1" use certain image
+  - file: !secret image1
+    id: idImage1
+    resize: 320x166
+    type: RGB24
+# --- Image2 comes from secret.yaml ---------------------------------------------------------------
+#  - file: "images/image2" use certain image
+  - file: !secret image2
+    id: idImage2
+    resize: 320x180
+    type: RGB24
+
+#=== Fonts ========================================================================================
+font:
+  - file:
+      type: gfonts
+      family: Roboto
+      weight: 400
+    id: roboto40
+    size: 40
+    glyphs: " .,-°>0123456789ACDFNOabefgnu"
+  - file:
+      type: gfonts
+      family: Roboto
+      weight: 400
+    id: roboto14
+    size: 14
+    glyphs: " <>!%()+=,-_.:°/?0123456789AÁBCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzó"
+  - file:
+      type: gfonts
+      family: Roboto
+      weight: 400
+    id: roboto10
+    size: 10
+    glyphs: ".AÁCFNSTburselntagoócipyz"
+  - file:
+      type: gfonts
+      family: Material+Symbols+Outlined
+      weight: 600
+    id: icon_font_34
+    size: 34
+    glyphs: [
+      "\U0000f16a", # mdi-fire
+      "\U0000e8ac", # mdi-power
+      "\U0000e145", # mdi-plus
+      "\U0000e15b", # mdi-minus
+      ]
+
+# Create color scheme
+color:
+  - id: idColWhite
+    hex: ffffff
+  - id: idColBlue
+    hex: 18bcf2
+  - id: idColYellow
+    hex: ffd502
+  - id: idColGreen
+    hex: 00ff00
+  - id: idColRed
+    hex: ff0000
+  - id: idColLightOrange
+    hex: edb597
+  - id: idColMidOrange
+    hex: df7d4a
+  - id: idColDarkOrange
+    hex: bf5922
+  - id: idColLightGray
+    hex: e1e1e1
+  - id: idColMidGray
+    hex: c0c0c0
+  - id: idColDarkGray
+    hex: 9e9e9e
+  - id: idColBlack
+    hex: "000000"
+  - id: idColBlackish
+    hex: "212121"
+
+# =================================================================================================
+# --- Display backlight ---------------------------------------------------------------------------
+light:
+# Set up display backlight
+  - platform: monochromatic
+    output: idOutBacklightPWM
+    name: Display Backlight
+    id: idLightBacklight
+    restore_mode: ALWAYS_ON
+
+###################################################################################################
+# === Sensors =====================================================================================
+# --- Text sensors --------------------------------------------------------------------------------
+# Set up sensors for thermostat state, current temperature, and target temperature
+text_sensor:
+  - platform: wifi_info
+    ip_address:
+      name: ESP IP Address
+      id: idTextSenWifiIpAddr
+    ssid:
+      id: idTextSenWifiSsid
+      name: ESP Connected SSID
+    bssid:
+      id: idTextSenWifiBssid
+      name: ESP Connected BSSID
+    mac_address:
+      id: idTextSenWifiMac
+      name: ESP Mac Wifi Address
+
+# --- Sensors -------------------------------------------------------------------------------------
+sensor:
+  - platform: homeassistant
+    id: idHaNappaliTmp
+    entity_id: sensor.nappalisens_nappali_h_m_rs_klet
+    internal: true
+
+  - platform: homeassistant
+    id: idHaAronSzobaTmp
+    entity_id: sensor.aronszoba_ronszoba_h_m_rs_klet_2
+    internal: true
+
+# Reports the WiFi signal strength/RSSI in dB
+  - platform: wifi_signal
+    name: "WiFi Signal dB"
+    id: idSenWifiSignaldB
+    update_interval: 60s
+    entity_category: "diagnostic"
+
+# --- DHT -----------------------------------------------------------------------------------------
+  - platform: dht
+    pin: GPIO6
+    model: DHT22
+    temperature:
+      id: idThermostat_T
+      name: "Termosztát Hőmérséklet"
+      filters:
+        - lambda: |-
+           return x - 2.0; /* offseting */
+    humidity:
+      id: idThermostat_H
+      name: "Termosztát Páratartalom"
+    update_interval: 60s
+
+# --- Copy to display on graph --------------------------------------------------------------------
+  - platform: copy
+    id: idCopySenThermTargetTmp
+    source_id: idThermostat_T #dummy
+    name: "Thermostat target temp."
+    filters:
+      - lambda: |-
+         return id(idClimateCtrl).target_temperature;
+         /* get target temperatrure from climate control */
+
+# --- Select source temperature --------------------------------------------------------------------
+# get the currently selected reference temperature source if it is plausible
+  - platform: copy
+    id: idCopySenThermSourceTmp
+    source_id: idThermostat_T #dummy
+    name: "Thermostat source temp."
+    filters:
+      - lambda: |-
+         if ((id(idHaNappaliTmp).has_state()) &&
+             (id(idHaNappaliTmp).state > 10.f) &&
+             (id(idHaNappaliTmp).state < 40.f)) {
+           id(idGlbNappaliPlauErr) = 0;
+         } else {
+           id(idGlbNappaliPlauErr) = 1;
+         }
+         if ((id(idHaAronSzobaTmp).has_state()) &&
+             (id(idHaAronSzobaTmp).state > 10.f) &&
+             (id(idHaAronSzobaTmp).state < 40.f)) {
+           id(idGlbAronSzobaPlauErr) = 0;
+         } else {
+           id(idGlbAronSzobaPlauErr) = 1;
+         }
+         /**/
+         if ((1 == id(idGlbRefTmpSrc)) && (0U == id(idGlbNappaliPlauErr))) {
+            return id(idHaNappaliTmp).state;
+         } else if ((2 == id(idGlbRefTmpSrc)) && (0U == id(idGlbAronSzobaPlauErr))) {
+            return id(idHaAronSzobaTmp).state;
+         } else {
+            return id(idThermostat_T).state;
+         }
+
+# --- Uptime ----------------------------------------------------------------------
+  - platform: uptime
+    id: idSenUptime
+    name: $friendly_name Uptime
+
+# --- Binary sensors --------------------------------------------------------------
+# Setup binary sensors for the four areas for touch
+binary_sensor:
+# Minus button to lower target temperature, only active in heating mode
+  - platform: touchscreen
+    name: "Minus button"
+    id: minusbutton
+    x_min: 30
+    y_min: 28
+    x_max: 63
+    y_max: 71
+    on_press:
+      - lambda: |-
+          if (CLIMATE_MODE_HEAT == id(idClimateCtrl).mode) {
+            auto target = id(idClimateCtrl).target_temperature;
+            auto call = id(idClimateCtrl).make_call();
+            call.set_target_temperature(target - 0.5f);
+            call.perform();
+          }
+      - component.update: idDisplay
+    on_release:
+      - component.update: idDisplay
+
+# Plus button to raise target temperature, only active in heating mode
+  - platform: touchscreen
+    name: "Plus button"
+    id: plusbutton
+    x_min: 27
+    y_min: 237
+    x_max: 61
+    y_max: 290
+    on_press:
+      - lambda: |-
+          if (CLIMATE_MODE_HEAT == id(idClimateCtrl).mode) {
+            auto target = id(idClimateCtrl).target_temperature;
+            auto call = id(idClimateCtrl).make_call();
+            call.set_target_temperature(target + 0.5f);
+            call.perform();;
+          }
+      - component.update: idDisplay
+    on_release:
+      - component.update: idDisplay
+
+# Heat button to turn on heating mode
+  - platform: touchscreen
+    name: "Heat button"
+    id: heatbutton
+    x_min: 90
+    y_min: 28
+    x_max: 122
+    y_max: 71
+    on_press:
+      - lambda: |-
+          if (CLIMATE_MODE_OFF == id(idClimateCtrl).mode) {
+            auto call = id(idClimateCtrl).make_call();
+            call.set_mode("HEAT");
+            call.perform();
+          }
+      - component.update: idDisplay
+    on_release:
+      - component.update: idDisplay
+
+# Off button to turn off heating mode
+  - platform: touchscreen
+    name: "Off button"
+    id: offbutton
+    x_min: 90
+    y_min: 240
+    x_max: 122
+    y_max: 290
+    on_press:
+      - lambda: |-
+          if (CLIMATE_MODE_HEAT == id(idClimateCtrl).mode) {
+            auto call = id(idClimateCtrl).make_call();
+            call.set_mode("OFF");
+            call.perform();
+          }
+      - component.update: idDisplay
+    on_release:
+      - component.update: idDisplay
+
+#=== Nappali selector button =======================================================================
+  - platform: touchscreen
+    name: "Nappali selector"
+    id: idBinSensNappaliSel
+    x_min: 130
+    y_min: 250
+    x_max: 190
+    y_max: 310
+    on_press:
+      - lambda: |-
+         if (1U != id(idGlbRefTmpSrc)) {
+           if (id(idHaNappaliTmp).has_state() &&
+           (id(idHaNappaliTmp).state > 0.f)   &&
+           (id(idHaNappaliTmp).state < 40.f)) {
+              id(idGlbRefTmpSrc) = 1;
+              /* set climate */
+              auto call = id(idClimateCtrl).make_call();
+              call.set_preset("Nappali");
+              call.perform();
+           }
+         } else if (1U == id(idGlbRefTmpSrc)) {
+           id(idGlbRefTmpSrc) = 0;
+           /* set climate */
+           auto call = id(idClimateCtrl).make_call();
+           call.set_preset("Lokál");
+           call.perform();
+         }
+      - component.update: idDisplay
+    on_release:
+      - component.update: idDisplay
+
+#=== AronSzoba selector button =======================================================================
+  - platform: touchscreen
+    name: "AronSzoba selector"
+    id: idBinSensAronSzobaSel
+    x_min: 190
+    y_min: 250
+    x_max: 234
+    y_max: 320
+    on_press:
+      - lambda: |-
+         if (2U != id(idGlbRefTmpSrc)) {
+           if (id(idHaNappaliTmp).has_state() &&
+           (id(idHaNappaliTmp).state > 0.f)   &&
+           (id(idHaNappaliTmp).state < 40.f)) {
+              id(idGlbRefTmpSrc) = 2;
+              /* set climate */
+              auto call = id(idClimateCtrl).make_call();
+              call.set_preset("ÁronSzoba");
+              call.perform();
+           }
+         } else if (2U == id(idGlbRefTmpSrc)) {
+           id(idGlbRefTmpSrc) = 0;
+           /* set climate */
+           auto call = id(idClimateCtrl).make_call();
+           call.set_preset("Lokál");
+           call.perform();
+         }
+      - component.update: idDisplay
+    on_release:
+      - component.update: idDisplay
+
+#=== Backlight OFF ================================================================================
+  - platform: touchscreen
+    name: "Backlight decrease button"
+    id: idBinSensBlOff
+    x_min: 150
+    y_min: 150
+    x_max: 210
+    y_max: 210
+    on_press:
+      - lambda: |-
+         if (id(idGlbLcdBrightness) > 0.f) {
+            id(idGlbLcdBrightness) -= 0.34f;
+            id(idLightBacklight).turn_on().set_brightness(id(idGlbLcdBrightness)).perform();
+         }
+         if (id(idGlbLcdBrightness) < 0.f) {
+            id(idGlbLcdBrightness) = 0.f;
+            id(idLightBacklight).turn_off().perform();
+         }
+
+#=== Backlight ON =================================================================================
+  - platform: touchscreen
+    name: "Backlight ON button"
+    id: idBinSensBlOn
+    x_min: 150
+    y_min: 0
+    x_max: 210
+    y_max: 140
+    on_press:
+      - lambda: |-
+         /* set brigthness */
+         id(idGlbLcdBrightness) = 1.0f;
+         id(idLightBacklight).turn_on().set_brightness(id(idGlbLcdBrightness)).perform();
+
+# =================================================================================================
+# Hardware related setup
+spi:
+  - id: tft
+    clk_pin: GPIO4
+    mosi_pin: GPIO3
+#    miso_pin: not used
+  - id: touch
+    clk_pin: GPIO8
+    mosi_pin: GPIO10
+    miso_pin: GPIO11
+
+# =================================================================================================
+# === Switches ====================================================================================
+# --- Setup board power switches ------------------------------------------------------------------
+switch:
+  - platform: restart
+    name: "$friendly_name restart"
+  - platform: shutdown
+    name: "$friendly_name shutdown"
+  - platform: safe_mode
+    name: "$friendly_name restart (Safe Mode)"
+# === Heat relay control =========================================================
+  - platform: gpio
+    pin: GPIO7
+    inverted: false
+    id: idThermostat_HeatSw
+    name: "Termosztát Fűtés"
+# === LED control ================================================================
+  - platform: gpio
+    pin: GPIO13
+    inverted: false
+    id: idThermostat_GrnLed
+    name: "Termosztát Green Led"
+
+# === LCD backlight ===============================================================================
+output:
+  - platform: ledc
+    pin: GPIO5
+    id: idOutBacklightPWM
+
+# =================================================================================================
+# === Display =====================================================================================
+# Setup the ili9xxx platform
+# Display is used as 240x320 by default so we rotate it to 90°
+display:
+  - platform: ili9xxx
+    model: st7789v
+    spi_id: tft
+    cs_pin: GPIO1
+    dc_pin: GPIO2
+    rotation: 90
+    data_rate: 80000000
+    id: idDisplay
+    pages:
+      - id: idPageMain
+        lambda: |-
+          it.fill(id(Color::BLACK));
+          /**/
+          if (id(idClimateCtrl).mode == CLIMATE_MODE_HEAT) {
+            if (id(minusbutton).state) {
+              it.filled_rectangle(20, 20, 60, 40, id(idColMidGray));
+              it.filled_rectangle(20, 58, 60, 2, id(idColLightGray));
+              it.filled_rectangle(78, 20, 2, 40, id(idColLightGray));
+              it.filled_rectangle(20, 20, 60, 2, id(idColDarkGray));
+              it.filled_rectangle(20, 20, 2, 40, id(idColDarkGray));
+              it.printf(50, 40, id(icon_font_34), idColBlackish, TextAlign::CENTER, "\U0000e15b");
+            } else {
+              it.filled_rectangle(20, 20, 60, 40, id(idColMidGray));
+              it.filled_rectangle(20, 20, 60, 2, id(idColLightGray));
+              it.filled_rectangle(20, 20, 2, 40, id(idColLightGray));
+              it.filled_rectangle(20, 58, 60, 2, id(idColDarkGray));
+              it.filled_rectangle(78, 20, 2, 40, id(idColDarkGray));
+              it.printf(50, 40, id(icon_font_34), idColBlackish, TextAlign::CENTER, "\U0000e15b");
+            }
+            if (id(plusbutton).state) {
+              it.filled_rectangle(240, 20, 60, 40, id(idColMidGray));
+              it.filled_rectangle(240, 58, 60, 2, id(idColLightGray));
+              it.filled_rectangle(298, 20, 2, 40, id(idColLightGray));
+              it.filled_rectangle(240, 20, 60, 2, id(idColDarkGray));
+              it.filled_rectangle(240, 20, 2, 40, id(idColDarkGray));
+              it.printf(270, 40, id(icon_font_34), idColBlackish, TextAlign::CENTER, "\U0000e145");
+            } else {
+              it.filled_rectangle(240, 20, 60, 40, id(idColMidGray));
+              it.filled_rectangle(240, 20, 60, 2, id(idColLightGray));
+              it.filled_rectangle(240, 20, 2, 40, id(idColLightGray));
+              it.filled_rectangle(240, 58, 60, 2, id(idColDarkGray));
+              it.filled_rectangle(298, 20, 2, 40, id(idColDarkGray));
+              it.printf(270, 40, id(icon_font_34), idColBlackish, TextAlign::CENTER, "\U0000e145");
+            }
+            it.printf(160, 10, id(roboto10), TextAlign::TOP_CENTER, "Target");
+            it.printf(160, 17, id(roboto40), TextAlign::TOP_CENTER, "%.1f °C", id(idClimateCtrl).target_temperature);
+          } else {
+            if (id(idClimateCtrl).mode == CLIMATE_MODE_OFF) {
+              it.printf(160, 17, id(roboto40), TextAlign::TOP_CENTER, "OFF");
+            }
+          }
+          /**/
+          if ((1 == id(idGlbRefTmpSrc)) && (0U == id(idGlbNappaliPlauErr))) {
+            it.printf(160, 70, id(roboto10), TextAlign::TOP_CENTER, "Nappali");
+          } else if ((2 == id(idGlbRefTmpSrc)) && (0U == id(idGlbAronSzobaPlauErr))) {
+            it.printf(160, 70, id(roboto10), TextAlign::TOP_CENTER, "ÁronSzoba");
+          } else {
+            it.printf(160, 70, id(roboto10), TextAlign::TOP_CENTER, "Folyosó");
+          }          
+          it.printf(160, 77, id(roboto40), TextAlign::TOP_CENTER, "%.1f °C", id(idClimateCtrl).current_temperature);
+          /**/
+          if (id(idClimateCtrl).mode == CLIMATE_MODE_HEAT) {
+            it.filled_rectangle(20, 80, 60, 40, id(idColMidOrange));
+            it.filled_rectangle(20, 118, 60, 2, id(idColLightOrange));
+            it.filled_rectangle(78, 80, 2, 40, id(idColLightOrange));
+            it.filled_rectangle(20, 80, 60, 2, id(idColDarkOrange));
+            it.filled_rectangle(20, 80, 2, 40, id(idColDarkOrange));
+            it.printf(50, 100, id(icon_font_34), idColWhite, TextAlign::CENTER, "\U0000f16a");
+          } else {
+            it.filled_rectangle(20, 80, 60, 40, id(idColMidGray));
+            it.filled_rectangle(20, 80, 60, 2, id(idColLightGray));
+            it.filled_rectangle(20, 80, 2, 40, id(idColLightGray));
+            it.filled_rectangle(20, 118, 60, 2, id(idColDarkGray));
+            it.filled_rectangle(78, 80, 2, 40, id(idColDarkGray));
+            it.printf(50, 100, id(icon_font_34), idColBlackish, TextAlign::CENTER, "\U0000f16a");
+          }
+          /**/
+          if (id(idClimateCtrl).mode == CLIMATE_MODE_OFF) {
+            it.filled_rectangle(240, 80, 60, 40, id(idColMidGray));
+            it.filled_rectangle(240, 118, 60, 2, id(idColLightGray));
+            it.filled_rectangle(298, 80, 2, 40, id(idColLightGray));
+            it.filled_rectangle(240, 80, 60, 2, id(idColDarkGray));
+            it.filled_rectangle(240, 80, 2, 40, id(idColDarkGray));
+            it.printf(270, 100, id(icon_font_34), idColBlackish, TextAlign::CENTER, "\U0000e8ac");
+          } else {
+            it.filled_rectangle(240, 80, 60, 40, id(idColMidGray));
+            it.filled_rectangle(240, 80, 60, 2, id(idColLightGray));
+            it.filled_rectangle(240, 80, 2, 40, id(idColLightGray));
+            it.filled_rectangle(240, 118, 60, 2, id(idColDarkGray));
+            it.filled_rectangle(298, 80, 2, 40, id(idColDarkGray));
+            it.printf(270, 100, id(icon_font_34), idColBlackish, TextAlign::CENTER, "\U0000e8ac");
+          }
+          /**/
+          if (1 == id(idGlbRefTmpSrc)) {/*Nappali*/
+            it.rectangle(250, 130, 70, 44, id(idColGreen));
+            it.rectangle(251, 131, 68, 42, id(idColGreen));
+            it.rectangle(252, 132, 66, 40, id(idColGreen));
+            it.rectangle(250, 185, 70, 44, id(idColLightGray));
+            it.rectangle(251, 186, 68, 42, id(idColBlack));
+            it.rectangle(252, 187, 66, 40, id(idColBlack));
+          } else if (2 == id(idGlbRefTmpSrc)) { /*AronSZoba*/
+            it.rectangle(250, 130, 70, 44, id(idColLightGray));
+            it.rectangle(251, 131, 68, 42, id(idColBlack));
+            it.rectangle(252, 132, 66, 40, id(idColBlack));
+            it.rectangle(250, 185, 70, 44, id(idColGreen));
+            it.rectangle(251, 186, 68, 42, id(idColGreen));
+            it.rectangle(252, 187, 66, 40, id(idColGreen));
+          } else {  /*Folyoso*/
+            it.rectangle(250, 130, 70, 44, id(idColLightGray));
+            it.rectangle(251, 131, 68, 42, id(idColBlack));
+            it.rectangle(252, 132, 66, 40, id(idColBlack));
+            it.rectangle(250, 185, 70, 44, id(idColLightGray));
+            it.rectangle(251, 186, 68, 42, id(idColBlack));
+            it.rectangle(252, 187, 66, 40, id(idColBlack));
+          }
+          /*Nappali*/
+          it.printf(285, 143, id(roboto14), id(idColRed), TextAlign::CENTER, "Nappali");
+          if (0U == id(idGlbNappaliPlauErr)) {
+             it.printf(285, 161, id(roboto14), id(idColRed), TextAlign::CENTER, "%.1f °C", id(idHaNappaliTmp).state);
+          } else {
+             it.printf(285, 161, id(roboto14), id(idColRed), TextAlign::CENTER, "! Hiba !");
+          }
+          /*Aron Szoba*/
+          it.printf(285, 198, id(roboto14), id(idColYellow), TextAlign::CENTER, "ÁronSzoba");
+          if (0U == id(idGlbAronSzobaPlauErr)) {
+             it.printf(285, 216, id(roboto14), id(idColYellow), TextAlign::CENTER, "%.1f °C", id(idHaAronSzobaTmp).state);
+          } else {
+             it.printf(285, 216, id(roboto14), id(idColYellow), TextAlign::CENTER, "! Hiba !");
+          }
+          /**/
+          it.print(10, 133, id(roboto14), TextAlign::CENTER_LEFT, "30");
+          it.print(10, 164, id(roboto14), TextAlign::CENTER_LEFT, "25");
+          it.print(10, 196, id(roboto14), TextAlign::CENTER_LEFT, "20");
+          it.print(10, 227, id(roboto14), TextAlign::CENTER_LEFT, "15");
+          it.graph(50, 130, id(idGraphTempgraph));
+          /* time */
+          auto time = id(idTime).now();
+          if ( time.is_valid()) {
+            it.strftime(320, 0, id(roboto14), id(idColYellow), TextAlign::TOP_RIGHT, "%Y. %B %d. %H:%M", time);
+          }
+
+      - id: idPagePict1
+        lambda: |-
+          it.image(0, 37, id(idImage1));
+          /* time */
+          auto time = id(idTime).now();
+          if ( time.is_valid()) {
+            it.strftime(320, 0, id(roboto14), id(idColYellow), TextAlign::TOP_RIGHT, "%Y. %B %d. %H:%M", time);
+          }
+
+      - id: idPagePict2
+        lambda: |-
+          it.image(0, 30, id(idImage2));
+          /* time */
+          auto time = id(idTime).now();
+          if ( time.is_valid()) {
+            it.strftime(320, 0, id(roboto14), id(idColYellow), TextAlign::TOP_RIGHT, "%Y. %B %d. %H:%M", time);
+          }
+
+      - id: idPageDbg
+        lambda: |-
+          /* DEBUG */
+          it.print( 0,  0,  id(roboto40), idColMidOrange, TextAlign::TOP_LEFT, "--- Debug ---");
+          it.printf(10, 45, id(roboto14), TextAlign::TOP_LEFT, "Wifi SSID:  %s", id(idTextSenWifiSsid).state.c_str());
+          it.printf(10, 65, id(roboto14), TextAlign::TOP_LEFT, "Wifi BSSID: %s", id(idTextSenWifiBssid).state.c_str());
+          it.printf(10, 85, id(roboto14), TextAlign::TOP_LEFT, "Wifi Signal (dBm): %g", id(idSenWifiSignaldB).state);
+          it.printf(10, 105, id(roboto14), TextAlign::TOP_LEFT, "Wifi IP: %s", id(idTextSenWifiIpAddr).state.c_str());
+          it.printf(10, 125, id(roboto14), TextAlign::TOP_LEFT, "Wifi MAC: %s", id(idTextSenWifiMac).state.c_str());
+          it.printf(10, 145, id(roboto14), TextAlign::TOP_LEFT, "ETSR: %.1f s", id(idSenUptime).state);
+
+# =================================================================================================
+# === Display =====================================================================================
+touchscreen:
+  platform: xpt2046
+  spi_id: touch
+  cs_pin: GPIO9
+  interrupt_pin: GPIO12
+#  update_interval: 100ms
+#  report_interval: 1s
+  threshold: 400
+  calibration:
+    x_min: 230
+    x_max: 3860
+    y_min: 180
+    y_max: 3860
+  transform:
+    swap_xy: false
+    mirror_x: false
+    mirror_y: false
+  on_touch:
+    - lambda: |-
+       /**/
+       id(idGlbTCntr) = 0U;
+       if (0 < id(idGlbDsplyPage)) { /* picture 1 */
+            id(idGlbDsplyPage) = 0;
+            idDisplay->show_page(idPageMain);
+       } else {
+         if ((touch.x > 10) &&  (touch.x < 50) &&
+             (touch.y > 130) &&  (touch.y < 190) ) {
+             id(idGlbDsplyPage) = 2;
+             idDisplay->show_page(idPageDbg);
+         }
+       }
+#       ESP_LOGI("cal", "x=%d, y=%d, x_raw=%d, y_raw=%0d",
+#           touch.x,
+#           touch.y,
+#           touch.x_raw,
+#           touch.y_raw
+#           );
+
+
+#=================================================================================
+# === Climate control ============================================================
+climate:
+  - platform: thermostat
+    id: idClimateCtrl
+    name: "Termosztát Vezérlő"
+    sensor: idCopySenThermSourceTmp
+    min_heating_off_time: 120s
+    min_heating_run_time: 120s
+    min_idle_time: 30s
+    heat_deadband: 1.0
+    visual:
+      min_temperature: 15
+      max_temperature: 35
+      temperature_step: 0.5
+    heat_action:
+      - switch.turn_on: idThermostat_HeatSw
+    idle_action:
+      - switch.turn_off: idThermostat_HeatSw
+    heat_mode:
+      - switch.turn_on: idThermostat_GrnLed
+    off_mode:
+      - switch.turn_off: idThermostat_GrnLed
+    default_preset: Lokál
+    on_boot_restore_from: memory
+    preset:
+      - name: Lokál
+        default_target_temperature_low: 21 °C
+      - name: ÁronSzoba
+        default_target_temperature_low: 21 °C
+      - name: Nappali
+        default_target_temperature_low: 21 °C
+    preset_change:
+      - lambda: |-
+          /* Custom Preset, type: string */
+          if (id(idClimateCtrl).custom_preset == "Nappali" ) {
+            id(idGlbRefTmpSrc) = 1;
+          } else if (id(idClimateCtrl).custom_preset == "ÁronSzoba" ) {
+            id(idGlbRefTmpSrc) = 2;
+          } else {
+            id(idGlbRefTmpSrc) = 0;
+          }
+          /* change display to main */
+          id(idGlbTCntr) = 0;
+          id(idGlbDsplyPage) = 0;
+          idDisplay->show_page(idPageMain);
+
+# =================================================================================================
+# === Graph =======================================================================================
+graph:
+  - id: idGraphTempgraph
+    duration: 1h
+    width: 190
+    height: 100
+    x_grid: 10min
+    y_grid: 5
+    max_value: 30.0
+    min_value: 15.0
+    traces:
+#      - sensor: idHaThermostatCurrTemp
+      - sensor: idThermostat_T
+        line_type: SOLID
+        line_thickness: 2
+        color: idColBlue
+      - sensor: idHaAronSzobaTmp
+        line_type: SOLID
+        line_thickness: 2
+        color: idColYellow
+      - sensor: idHaNappaliTmp
+        line_type: SOLID
+        line_thickness: 2
+        color: idColRed
+      - sensor: idCopySenThermTargetTmp
+        line_type: SOLID
+        line_thickness: 3
+        color: idColGreen
+
+
+#==================================================================================================
+# --- Time control, get time from HA --------------------------------------------------------------
+time:
+- platform: homeassistant
+  id: idTime
+

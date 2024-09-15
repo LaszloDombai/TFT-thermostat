@@ -1,0 +1,2 @@
+esphome compile tftthermostat.yaml
+pause
