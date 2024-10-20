@@ -122,7 +122,7 @@ image:
 #  - file: "images/image1" use certain image
   - file: !secret image1
     id: idImage1
-    resize: 320x166
+#    resize: 180x240
     type: RGB24
 # --- Image2 comes from secret.yaml ---------------------------------------------------------------
 #  - file: "images/image2" use certain image
@@ -453,9 +453,9 @@ binary_sensor:
     name: "Backlight decrease button"
     id: idBinSensBlOff
     x_min: 150
-    y_min: 150
+    y_min: 0
     x_max: 210
-    y_max: 210
+    y_max: 140
     on_press:
       - lambda: |-
          if (id(idGlbLcdBrightness) > 0.f) {
@@ -470,11 +470,11 @@ binary_sensor:
 #=== Backlight ON =================================================================================
   - platform: touchscreen
     name: "Backlight ON button"
-    id: idBinSensBlOn
+    id: idBinSensBlOn    
     x_min: 150
-    y_min: 0
+    y_min: 150
     x_max: 210
-    y_max: 140
+    y_max: 210    
     on_press:
       - lambda: |-
          /* set brigthness */
@@ -532,6 +532,7 @@ display:
     spi_id: tft
     cs_pin: GPIO1
     dc_pin: GPIO2
+    invert_colors: false
     rotation: 90
     data_rate: 80000000
     id: idDisplay
@@ -571,7 +572,7 @@ display:
               it.filled_rectangle(298, 20, 2, 40, id(idColDarkGray));
               it.printf(270, 40, id(icon_font_34), idColBlackish, TextAlign::CENTER, "\U0000e145");
             }
-            it.printf(160, 10, id(roboto10), TextAlign::TOP_CENTER, "Target");
+            /*it.printf(160, 10, id(roboto10), TextAlign::TOP_CENTER, "Target");*/
             it.printf(160, 17, id(roboto40), TextAlign::TOP_CENTER, "%.1f °C", id(idClimateCtrl).target_temperature);
           } else {
             if (id(idClimateCtrl).mode == CLIMATE_MODE_OFF) {
@@ -580,11 +581,11 @@ display:
           }
           /**/
           if ((1 == id(idGlbRefTmpSrc)) && (0U == id(idGlbNappaliPlauErr))) {
-            it.printf(160, 70, id(roboto10), TextAlign::TOP_CENTER, "Nappali");
+            it.printf(160, 65, id(roboto14), TextAlign::TOP_CENTER, "Nappali");
           } else if ((2 == id(idGlbRefTmpSrc)) && (0U == id(idGlbAronSzobaPlauErr))) {
-            it.printf(160, 70, id(roboto10), TextAlign::TOP_CENTER, "ÁronSzoba");
+            it.printf(160, 65, id(roboto14), TextAlign::TOP_CENTER, "ÁronSzoba");
           } else {
-            it.printf(160, 70, id(roboto10), TextAlign::TOP_CENTER, "Folyosó");
+            it.printf(160, 65, id(roboto14), TextAlign::TOP_CENTER, "Folyosó");
           }          
           it.printf(160, 77, id(roboto40), TextAlign::TOP_CENTER, "%.1f °C", id(idClimateCtrl).current_temperature);
           /**/
@@ -657,34 +658,24 @@ display:
              it.printf(285, 216, id(roboto14), id(idColYellow), TextAlign::CENTER, "! Hiba !");
           }
           /**/
-          it.print(10, 133, id(roboto14), TextAlign::CENTER_LEFT, "30");
-          it.print(10, 164, id(roboto14), TextAlign::CENTER_LEFT, "25");
-          it.print(10, 196, id(roboto14), TextAlign::CENTER_LEFT, "20");
-          it.print(10, 227, id(roboto14), TextAlign::CENTER_LEFT, "15");
+          it.print(10, 133, id(roboto14), TextAlign::CENTER_LEFT, "25");
+          it.print(10, 164, id(roboto14), TextAlign::CENTER_LEFT, "23.3");
+          it.print(10, 196, id(roboto14), TextAlign::CENTER_LEFT, "21.6");
+          it.print(10, 227, id(roboto14), TextAlign::CENTER_LEFT, "20");
           it.graph(50, 130, id(idGraphTempgraph));
           /* time */
           auto time = id(idTime).now();
           if ( time.is_valid()) {
-            it.strftime(320, 0, id(roboto14), id(idColYellow), TextAlign::TOP_RIGHT, "%Y. %B %d. %H:%M", time);
+            it.strftime(160, 0, id(roboto14), id(idColYellow), TextAlign::TOP_CENTER, "%Y. %B %d. %H:%M", time);
           }
 
       - id: idPagePict1
         lambda: |-
-          it.image(0, 37, id(idImage1));
-          /* time */
-          auto time = id(idTime).now();
-          if ( time.is_valid()) {
-            it.strftime(320, 0, id(roboto14), id(idColYellow), TextAlign::TOP_RIGHT, "%Y. %B %d. %H:%M", time);
-          }
+          it.image(70, 0, id(idImage1));
 
       - id: idPagePict2
         lambda: |-
           it.image(0, 30, id(idImage2));
-          /* time */
-          auto time = id(idTime).now();
-          if ( time.is_valid()) {
-            it.strftime(320, 0, id(roboto14), id(idColYellow), TextAlign::TOP_RIGHT, "%Y. %B %d. %H:%M", time);
-          }
 
       - id: idPageDbg
         lambda: |-
@@ -748,7 +739,8 @@ climate:
     min_heating_off_time: 120s
     min_heating_run_time: 120s
     min_idle_time: 30s
-    heat_deadband: 1.0
+    heat_deadband: 0.099
+    heat_overrun: 0.199
     visual:
       min_temperature: 15
       max_temperature: 35
@@ -793,9 +785,9 @@ graph:
     width: 190
     height: 100
     x_grid: 10min
-    y_grid: 5
-    max_value: 30.0
-    min_value: 15.0
+    y_grid: 1.660
+    max_value: 25.0
+    min_value: 20.0
     traces:
 #      - sensor: idHaThermostatCurrTemp
       - sensor: idThermostat_T
