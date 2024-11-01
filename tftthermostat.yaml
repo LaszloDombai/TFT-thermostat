@@ -122,13 +122,12 @@ image:
 #  - file: "images/image1" use certain image
   - file: !secret image1
     id: idImage1
-#    resize: 180x240
     type: RGB24
 # --- Image2 comes from secret.yaml ---------------------------------------------------------------
 #  - file: "images/image2" use certain image
   - file: !secret image2
     id: idImage2
-    resize: 320x180
+#    resize: 320x180
     type: RGB24
 
 #=== Fonts ========================================================================================
@@ -312,10 +311,10 @@ binary_sensor:
   - platform: touchscreen
     name: "Minus button"
     id: minusbutton
-    x_min: 30
-    y_min: 28
-    x_max: 63
-    y_max: 71
+    x_min: 20
+    y_min: 20
+    x_max: 80
+    y_max: 60
     on_press:
       - lambda: |-
           if (CLIMATE_MODE_HEAT == id(idClimateCtrl).mode) {
@@ -332,10 +331,11 @@ binary_sensor:
   - platform: touchscreen
     name: "Plus button"
     id: plusbutton
-    x_min: 27
-    y_min: 237
-    x_max: 61
-    y_max: 290
+    #54, 200
+    x_min: 240
+    y_min: 20
+    x_max: 300
+    y_max: 60
     on_press:
       - lambda: |-
           if (CLIMATE_MODE_HEAT == id(idClimateCtrl).mode) {
@@ -352,10 +352,10 @@ binary_sensor:
   - platform: touchscreen
     name: "Heat button"
     id: heatbutton
-    x_min: 90
-    y_min: 28
-    x_max: 122
-    y_max: 71
+    x_min: 20
+    y_min: 80
+    x_max: 80
+    y_max: 120
     on_press:
       - lambda: |-
           if (CLIMATE_MODE_OFF == id(idClimateCtrl).mode) {
@@ -371,10 +371,10 @@ binary_sensor:
   - platform: touchscreen
     name: "Off button"
     id: offbutton
-    x_min: 90
-    y_min: 240
-    x_max: 122
-    y_max: 290
+    x_min: 240
+    y_min: 80
+    x_max: 300
+    y_max: 120
     on_press:
       - lambda: |-
           if (CLIMATE_MODE_HEAT == id(idClimateCtrl).mode) {
@@ -390,10 +390,10 @@ binary_sensor:
   - platform: touchscreen
     name: "Nappali selector"
     id: idBinSensNappaliSel
-    x_min: 130
-    y_min: 250
-    x_max: 190
-    y_max: 310
+    x_min: 250
+    y_min: 130
+    x_max: 320
+    y_max: 174
     on_press:
       - lambda: |-
          if (1U != id(idGlbRefTmpSrc)) {
@@ -421,10 +421,10 @@ binary_sensor:
   - platform: touchscreen
     name: "AronSzoba selector"
     id: idBinSensAronSzobaSel
-    x_min: 190
-    y_min: 250
-    x_max: 234
-    y_max: 320
+    x_min: 250
+    y_min: 185
+    x_max: 320
+    y_max: 250
     on_press:
       - lambda: |-
          if (2U != id(idGlbRefTmpSrc)) {
@@ -452,10 +452,10 @@ binary_sensor:
   - platform: touchscreen
     name: "Backlight decrease button"
     id: idBinSensBlOff
-    x_min: 150
-    y_min: 0
-    x_max: 210
-    y_max: 140
+    x_min: 0
+    y_min: 120
+    x_max: 80
+    y_max: 240
     on_press:
       - lambda: |-
          if (id(idGlbLcdBrightness) > 0.f) {
@@ -471,10 +471,10 @@ binary_sensor:
   - platform: touchscreen
     name: "Backlight ON button"
     id: idBinSensBlOn    
-    x_min: 150
-    y_min: 150
-    x_max: 210
-    y_max: 210    
+    x_min: 100
+    y_min: 120
+    x_max: 200
+    y_max: 240    
     on_press:
       - lambda: |-
          /* set brigthness */
@@ -671,11 +671,11 @@ display:
 
       - id: idPagePict1
         lambda: |-
-          it.image(70, 0, id(idImage1));
+          it.image(0, 0, id(idImage1));
 
       - id: idPagePict2
         lambda: |-
-          it.image(0, 30, id(idImage2));
+          it.image(29, 0, id(idImage2));
 
       - id: idPageDbg
         lambda: |-
@@ -687,6 +687,8 @@ display:
           it.printf(10, 105, id(roboto14), TextAlign::TOP_LEFT, "Wifi IP: %s", id(idTextSenWifiIpAddr).state.c_str());
           it.printf(10, 125, id(roboto14), TextAlign::TOP_LEFT, "Wifi MAC: %s", id(idTextSenWifiMac).state.c_str());
           it.printf(10, 145, id(roboto14), TextAlign::TOP_LEFT, "ETSR: %.1f s", id(idSenUptime).state);
+          it.printf(10, 165, id(roboto14), TextAlign::TOP_LEFT, "Folyosó: %.1f °C", id(idThermostat_T).state );          
+          
 
 # =================================================================================================
 # === Display =====================================================================================
@@ -699,12 +701,12 @@ touchscreen:
 #  report_interval: 1s
   threshold: 400
   calibration:
-    x_min: 230
-    x_max: 3860
-    y_min: 180
-    y_max: 3860
+    x_min: 194
+    x_max: 3880
+    y_min: 304
+    y_max: 3800  
   transform:
-    swap_xy: false
+    swap_xy: true
     mirror_x: false
     mirror_y: false
   on_touch:
@@ -715,8 +717,8 @@ touchscreen:
             id(idGlbDsplyPage) = 0;
             idDisplay->show_page(idPageMain);
        } else {
-         if ((touch.x > 10) &&  (touch.x < 50) &&
-             (touch.y > 130) &&  (touch.y < 190) ) {
+         if ((touch.x > 130) &&  (touch.x < 190) &&
+             (touch.y > 5) &&  (touch.y < 30) ) {
              id(idGlbDsplyPage) = 2;
              idDisplay->show_page(idPageDbg);
          }
